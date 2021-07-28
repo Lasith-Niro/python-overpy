@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from datetime import datetime
 from decimal import Decimal
+import urllib.request
 from urllib.request import urlopen
 from urllib.error import HTTPError
 from xml.sax import handler, make_parser
@@ -9,6 +10,12 @@ import json
 import re
 import time
 from typing import Any, Callable, ClassVar, Dict, List, NoReturn, Optional, Tuple, Type, TypeVar, Union
+
+import random
+from itertools import cycle
+import requests
+from lxml.html import fromstring # pip install --upgrade lxml
+
 
 from overpy import exception
 # Ignore flake8 F401 warning for unused vars
@@ -32,6 +39,44 @@ GLOBAL_ATTRIBUTE_MODIFIERS: Dict[str, Callable] = {
     "visible": lambda v: v.lower() == "true"
 }
 
+USER_AGENT_LIST = [
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:44.0) Gecko/20100101 Firefox/44.01',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/'
+    '54.0.2840.71 Safari/537.36',
+    'Mozilla/5.0 (Linux; Ubuntu 14.04) AppleWebKit/537.36 Chromium/35.0.1870.2 Safa'
+    'ri/537.36',
+    'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.'
+    '0.2228.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko'
+    ') Chrome/42.0.2311.135 '
+    'Safari/537.36 Edge/12.246',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, '
+    'like Gecko) Version/9.0.2 Safari/601.3.9',
+    'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/47.0.2526.111 Safari/537.36',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:54.0) Gecko/20100101 Firefox/54.0',
+]
+
+
+def get_proxies():
+    '''
+    Scraping few proxies from free-proxy-list.net
+    source : https://www.scrapehero.com/how-to-rotate-proxies-and-ip-addresses-using-python-3/
+    '''
+    url = 'https://free-proxy-list.net/'
+    response = requests.get(url)
+    # response = urllib.request.get(url)
+    parser = fromstring(response.text)
+    proxies = set()
+    for i in parser.xpath('//tbody/tr')[:10]:
+        if i.xpath('.//td[7][contains(text(),"yes")]'):
+        #Grabbing IP and corresponding PORT
+            proxy = ":".join([i.xpath('.//td[1]/text()')[0], i.xpath('.//td[2]/text()')[0]])
+            proxies.add(proxy)
+    return proxies
+
+PROXIES = get_proxies()
+PROXY_CHAIN = cycle(PROXIES)
 
 def is_valid_type(
         element: Union["Area", "Node", "Relation", "Way"],
@@ -129,6 +174,25 @@ class Overpass:
                 time.sleep(self.retry_timeout)
             retry_num += 1
             try:
+                # UA = random.choice(USER_AGENT_LIST)
+                p = next(PROXY_CHAIN) # selecting a proxy 
+                # p = '127.0.0.1:9051' # tor proxy
+                #create the object, assign it to a variable
+                proxy = urllib.request.ProxyHandler({'http': p, 'https': p})
+                # construct a new opener using your proxy settings
+                opener = urllib.request.build_opener(proxy)
+                # install the openen on the module-level
+                urllib.request.install_opener(opener)
+                # print(f'DEBUG: {UA}')
+                # print(f'DEBUG: {p}')
+                # overpass_request = urllib.request.Request(
+                #     self.url,
+                #     data = query,
+                #     headers = {
+                #         'User-Agent': UA
+                #     }
+                # )
+                # f = urlopen(overpass_request)
                 f = urlopen(self.url, query)
             except HTTPError as e:
                 f = e
